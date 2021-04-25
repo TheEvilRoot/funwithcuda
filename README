@@ -1,0 +1,10 @@
+fun with cuda
+-------------
+
+playing (and researching) cuda on c++ on old macOS 10.12.
+
+To compile on macOS I'm using:
+ - Apple Clang 8.0 from Xcode 8.2 (CommandLineTools is avaiable to download separatly) 
+ - CUDA driver for macOS 10.12 -- 387 and CUDA Tookit for macOS 8.0.
+
+Code is compatible with C++11 (because clang 8.0 doesn't supports C++14) and could be executed on different platform (like Windows and Linux) using newer versions of CUDA Toolkit.
