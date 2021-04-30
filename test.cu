@@ -6,147 +6,105 @@
 #include <x86intrin.h>
 #endif
 
-#include <chrono>
+#include "measure.cu"
+#include "utilities.cu"
 
 #define device_t float*
 #define host_t float
 #define v_size sizeof(host_t)
-
-struct Measure {
-  std::chrono::time_point<std::chrono::high_resolution_clock> mStart;
-  std::chrono::time_point<std::chrono::high_resolution_clock> mEnd;
-
-  Measure() {} 
-
-  void fromNow() {
-    mStart = std::chrono::high_resolution_clock::now();
-  }
-
-  void untilNow() {
-    mEnd = std::chrono::high_resolution_clock::now();
-  }
-
-  float millis() {
-    return nanos() / 1000000.0; 
-  }
-
-  float micros() {
-    return nanos() / 1000.0; 
-  }
-
-  float nanos() {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(mEnd - mStart).count() * 1.0;
-  }
-};
-
-struct CudaMeasure {
-  cudaEvent_t mStart;
-  cudaEvent_t mEnd;
-  float elapsedMs;
-
-  CudaMeasure(): elapsedMs(0) {
-    cudaEventCreate(&mStart);
-    cudaEventCreate(&mEnd);
-  }
-
-  ~CudaMeasure() {
-    cudaEventDestroy(mStart);
-    cudaEventDestroy(mEnd);
-  }
-
-  void fromNow() {
-    cudaEventRecord(mStart, 0);
-  }
-
-  void untilNow() {
-    cudaEventRecord(mEnd, 0);
-    cudaEventSynchronize(mEnd);
-
-    float elapsedTime = 0;
-    cudaEventElapsedTime(&elapsedTime, mStart, mEnd);
-
-    elapsedMs = elapsedTime;
-  }
-
-  float millis() {
-    return elapsedMs;
-  }
-
-  float micros() {
-    return  (elapsedMs * 1000.0);
-  }
-
-  float nanos() {
-    return  (elapsedMs * 1000000.00);
-  }
-
-  float value() {
-    return elapsedMs;
-  }
-
-};
 
 __global__ void kernelVectorAdd(device_t a, device_t b, device_t c) {
   c[blockIdx.x + 32 * threadIdx.x] = a[blockIdx.x + 32 * threadIdx.x] +
   b[blockIdx.x + 32 * threadIdx.x];
 }
 
-int main(void) {
-  host_t *a = (host_t*) malloc(1024 * v_size);
-  host_t *b = (host_t*) malloc(1024 * v_size);
-  host_t *c = (host_t*) malloc(1024 * v_size);
-  host_t *d = (host_t*) malloc(1024 * v_size);
+__global__ void kernelMatrixTransform(device_t source, device_t target, unsigned int nVectors, unsigned int nValues, unsigned int threads) {
+  /* linear index in the buffer */
+  unsigned int i = blockIdx.x * threads + threadIdx.x;
 
-  for (unsigned long i = 0; i < 1024; i++) {
-    a[i] = b[i] = i;
+  unsigned int sy = i / nValues;
+  unsigned int sx = ((i * 4) % nValues);
+
+  unsigned int ty = sy / 2; 
+  unsigned int tx = sx; 
+
+  target[ty * nValues / 2 + tx    ]       = source[sy * nValues + sx   ];
+  target[ty * nValues / 2 + tx + 1]       = source[sy * nValues + sx + 1];
+  target[(ty + 1) * nValues / 2 + tx    ] = source[sy * nValues + sx + 2];
+  target[(ty + 1) * nValues / 2 + tx + 1] = source[sy * nValues + sx + 3];
+
+
+  // target[((ty) * (nValues / 2)) + tx] = 
+  //target[i] = 
+  //tx;
+  //source[sy * nValues + sx];
+  //target[i] = sx;
+  //target[ty * (nValues / 2) + 1 + tx * 2] = source[i + 1];
+ // target[(ty + 1) * (nValues / 2) + tx * 2] = source[i + 2];
+ // target[(ty + 1) * (nValues / 2) + 1 + tx * 2] = source[i + 3];
+//
+  //target[ty * (nValues / 2) + tx + 1] =
+  //ty;
+  //source[sy * nValues + sx + 1];
+  
+  //target[(ty + 1) * (nValues / 2) + tx] =     
+  //ty;
+  //source[sy * nValues + sx + 2];
+  
+  //target[(ty + 1) * (nValues / 2) + tx + 1] =    
+  //ty;
+  //source[sy * nValues + sx + 3];
+}
+
+int main(void) {
+  /* usefull constants */
+  const unsigned int nVectors = 8;
+  const unsigned int nValues = 16;
+
+  const unsigned int nBytes = nVectors * nValues * v_size;
+  const unsigned int nElements = nVectors * nValues;
+
+  /* allocate host memory */
+  host_t *a = (host_t*) malloc(nBytes);
+  host_t *b = (host_t*) malloc(nBytes);
+  host_t *c = (host_t*) malloc(nBytes);
+
+  printf("sizeof(host_t): %ld bytes\n", sizeof(host_t));
+  printf("host: %p %p %p\n", a, b, c);
+  printf("allocated %u bytes on the host\n", nBytes * 3);
+
+  /* initialize host memory */
+  for (unsigned int i = 0; i < nElements; i++) {
+    a[i] = b[i] = i; 
     c[i] = 0; 
   }
 
+  /* allocate device memory */
   device_t deviceA = NULL;
   device_t deviceB = NULL;
-  device_t deviceC = NULL;
 
-  cudaMalloc(&deviceA, 1024 * v_size);
-  cudaMalloc(&deviceB, 1024 * v_size);
-  cudaMalloc(&deviceC, 1024 * v_size);
+  cudaMalloc(&deviceA, nBytes);
+  cudaMalloc(&deviceB, nBytes);
 
-  printf("sizeof(host_t): %ld bytes\n", sizeof(host_t));
-  printf("device: %p %p %p\n", deviceA, deviceB, deviceC);
+  printf("device: %p %p\n", deviceA, deviceB);
+  printf("allocated %u bytes on the device\n", nBytes * 2);
 
-  cudaMemcpy(deviceA, a, 1024 * v_size, cudaMemcpyHostToDevice);
-  cudaMemcpy(deviceB, b, 1024 * v_size, cudaMemcpyHostToDevice);
+  unsigned int threads = 8;
 
-  printf("calling a kernel on the device...\n");
+  const unsigned int blockSize = nElements / threads;
+  printf("%u threads per %u elements = %u block size\n", threads, nElements, blockSize); 
 
-  CudaMeasure device;
-  device.fromNow();
+  cudaMemcpy(deviceA, a, nBytes, cudaMemcpyHostToDevice);
+  kernelMatrixTransform<<<blockSize, threads>>>(deviceA, deviceB, nVectors, nValues, threads);
+  cudaMemcpy(b, deviceB, nBytes, cudaMemcpyDeviceToHost);
 
-  kernelVectorAdd<<<32, 32>>>(deviceA, deviceB, deviceC);
+  prettyPrint(a, nVectors, nValues);
+  prettyPrint(b, nVectors * 2, nValues / 2);
 
-  device.untilNow();
-
-  printf("kernel is done\n");
-  printf("device: %f micros\n", device.micros()); 
-
-  cudaMemcpy(c, deviceC, 1024 * v_size, cudaMemcpyDeviceToHost);
-
-  Measure cpu;
-  cpu.fromNow();
-  for (int i = 0; i < 1024; i++)
-    d[i] = a[i] + b[i];
-  cpu.untilNow();
-  printf("cpu: %f micros\n", cpu.micros()); 
-
-  for (int i = 0; i < 1024; i++)
-    if (c[i] != d[i]) printf("missmatch on %d: %f != %f\n", i, c[i], d[i]);
-
+  /* free all pointers we got */
   cudaFree(deviceA);
   cudaFree(deviceB);
-  cudaFree(deviceC);
   free(a);
   free(b);
   free(c);
-  free(d);
-
-  return 0;
 }
