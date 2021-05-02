@@ -119,7 +119,7 @@ struct shared_t {
       return r_gen_create;
     }
 
-    auto r_gen = curandGenerateUniform(generator, device_ptr, count); 
+    auto r_gen = curandGenerateNormal(generator, device_ptr, count, 40, 20); 
     if (r_gen != CURAND_STATUS_SUCCESS) {
       printf("[shared_t] generate failed %d\n", r_gen);
     }
@@ -253,13 +253,18 @@ __host__ void transformCpu(const host_t* input, host_t* output, size_t width, si
 }
 
 int main() {
-  FILE* matrix_file =fopen("/dev/null", "w"); 
-  const size_t height = 1024;
-  const size_t width = 1024;
+  const size_t height = 16;
+  const size_t width = 16;
   const size_t count = height * width;
   
   const size_t o_width = width / 2;
   const size_t o_height = height * 2;
+
+  FILE* matrix_file = stdout;
+  if (width > 32 || height > 32) {
+    printf("[warning] matrix will not be printed because sizes are too big\n");
+    matrix_file = fopen("/dev/null", "w");
+  }
 
   shared_t input{count, true};
   shared_t output{count, true};
@@ -289,8 +294,14 @@ int main() {
     return 1;
 
   /* calculate kernel start params */
-  const size_t iter_count = count / 4;  
-  const size_t thread_count = 256;
+  const size_t iter_count = count / 4;
+  size_t thread_count = iter_count < 1024 ? iter_count : 1024;
+
+  for (; thread_count >= 2; thread_count--)
+    if (iter_count % thread_count == 0)
+      break;
+
+  printf("thread count: %lu\n", thread_count);
 
   /* execute kernel on the device */
   measure.start();
@@ -321,8 +332,8 @@ int main() {
   fprintf(matrix_file, "check: \n");
   printMatrix(matrix_file, check.host(), o_width, o_height);
   
-  printf("measure cuda: %f mcs\n", measure.cuda_mcs());
-  printf("measure cpu: %f mcs\n", cpu_measure.mcs());
+  printf("measure device: %f mcs\n", measure.cuda_mcs());
+  printf("measure host: %f mcs\n", cpu_measure.mcs());
 
   auto result = compare(output.host(), check.host(), o_width, o_height);
   if (result.first < o_width || result.second < o_height) {
