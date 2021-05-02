@@ -253,8 +253,8 @@ __host__ void transformCpu(const host_t* input, host_t* output, size_t width, si
 }
 
 int main() {
-  const size_t height = 16;
-  const size_t width = 16;
+  const size_t height = 444;
+  const size_t width = 4213;
   const size_t count = height * width;
   
   const size_t o_width = width / 2;
