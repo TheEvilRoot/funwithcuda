@@ -119,7 +119,7 @@ struct shared_t {
       return r_gen_create;
     }
 
-    auto r_gen = curandGenerate(generator, (unsigned int*) device_ptr, count); 
+    auto r_gen = curandGenerateUniform(generator, device_ptr, count); 
     if (r_gen != CURAND_STATUS_SUCCESS) {
       printf("[shared_t] generate failed %d\n", r_gen);
     }
