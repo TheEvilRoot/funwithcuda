@@ -41,7 +41,16 @@ pair_t<size_t, size_t> compare(host_t* a, host_t* b, size_t width, size_t height
   }
   return pair_t<size_t, size_t>{width, height};
 }
-  
+ 
+void printWindow(FILE* file, host_t* matrix, size_t width, size_t w_start, size_t h_start, size_t w_width, size_t w_height) {
+  for (size_t y = w_start; y < w_height; y++) {
+    for (size_t x = h_start; x < w_width; x++)
+      fprintf(file, "%03.0f ", matrix[y * width + x]);
+    fprintf(file, "\n");
+  }
+  fprintf(file, "\n");
+}
+
 struct shared_t {
   device_t device_ptr;
   host_t *host_ptr;
@@ -253,7 +262,7 @@ __host__ void transformCpu(const host_t* input, host_t* output, size_t width, si
 }
 
 int main() {
-  const size_t height = 444;
+  const size_t height = 8444;
   const size_t width = 4213;
   const size_t count = height * width;
   
@@ -280,8 +289,6 @@ int main() {
   if (input.download() != 0)
     return 3;
 
-  /* fIndex to fill item with it's index */
-  /* fRamdom to fill item with random value */
   fillMatrix(output.host(), width, height, fZero);
   fillMatrix(check.host(), width, height, fZero);
 
@@ -341,6 +348,13 @@ int main() {
   } else {
     printf("compare check passed!\n");
   }
+
+  printf("input window: \n");
+  printWindow(stdout, input.host(), o_width, 0, 0, 4, 1);
+  printf("output window: \n");
+  printWindow(stdout, output.host(), o_width, 0, 0, 2, 2); 
+  printf("check window: \n");
+  printWindow(stdout, check.host(), o_width, 0, 0, 2, 2);
 
   /* all shared_t objects is allocated on the stack */
   /* so, destructor will automatically free all memory */
