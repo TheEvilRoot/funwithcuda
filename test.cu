@@ -20,18 +20,48 @@ __global__ void kernelVectorAdd(device_t a, device_t b, device_t c) {
 
 __global__ void kernelMatrixTransform(device_t source, device_t target, unsigned int nVectors, unsigned int nValues, unsigned int threads) {
   /* linear index in the buffer */
-  unsigned int i = blockIdx.x * threads + threadIdx.x;
+  /*unsigned int o = blockIdx.x * threads + threadIdx.x;
 
   unsigned int sy = i / nValues;
-  unsigned int sx = ((i * 4) % nValues);
+  unsigned int sx = (i % nValues);
 
-  unsigned int ty = sy / 2; 
-  unsigned int tx = sx; 
+  unsigned int sBlockY = sy;
+  unsigned int sBlockX = i / 4;
 
-  target[ty * nValues / 2 + tx    ]       = source[sy * nValues + sx   ];
-  target[ty * nValues / 2 + tx + 1]       = source[sy * nValues + sx + 1];
-  target[(ty + 1) * nValues / 2 + tx    ] = source[sy * nValues + sx + 2];
-  target[(ty + 1) * nValues / 2 + tx + 1] = source[sy * nValues + sx + 3];
+  unsigned int tBlockY = sy;
+  unsigned int tBlockX = i / 2;
+*/
+	
+	unsigned int i = blockIdx.x * threads + threadIdx.x;
+	unsigned int y = i / nValues;
+	unsigned int x = i % nValues;
+
+	x *= 4;
+	y *= 2;
+
+	unsigned int q = i / (nValues);
+	unsigned int w = i % (nValues / 2);
+
+	w *= 2;
+	q *= 2;
+
+	target[q * nValues + w] = source[y * nValues + x];
+
+return;
+/*
+
+	long long width = nValues;
+	long long w = width;
+	long long i = blockIdx.x * threads + threadIdx.x;
+	long long source_i = (i / width);
+	long long source_j = 4 * i % width;
+	long long target_j = source_j * 2;
+	target[source_i * w + target_j] = source[source_i * w + source_j];
+	target[source_i * w + target_j + 1] = source[(source_i) * w + source_j + 1];
+	target[(source_i + 2) * w + target_j + 1] = source[(source_i) * w + source_j + 2];
+	target[(source_i + 2) * w + target_j] = source[(source_i) * w + source_j + 3];
+*/
+return;
 
 
   // target[((ty) * (nValues / 2)) + tx] = 
@@ -75,8 +105,8 @@ int main(void) {
 
   /* initialize host memory */
   for (unsigned int i = 0; i < nElements; i++) {
-    a[i] = b[i] = i; 
-    c[i] = 0; 
+    a[i] = i; 
+    c[i] = b[i] = 0; 
   }
 
   /* allocate device memory */
@@ -91,9 +121,10 @@ int main(void) {
 
   unsigned int threads = 8;
 
-  const unsigned int blockSize = nElements / threads;
+  const unsigned int blockSize = (nElements / 4) / threads;
   printf("%u threads per %u elements = %u block size\n", threads, nElements, blockSize); 
 
+	cudaMemcpy(deviceB, b, nBytes, cudaMemcpyHostToDevice);
   cudaMemcpy(deviceA, a, nBytes, cudaMemcpyHostToDevice);
   kernelMatrixTransform<<<blockSize, threads>>>(deviceA, deviceB, nVectors, nValues, threads);
   cudaMemcpy(b, deviceB, nBytes, cudaMemcpyDeviceToHost);
