@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <curand_kernel.h>
 #include <chrono>
 
 #define host_t float
@@ -102,6 +103,34 @@ struct shared_t {
     printf("[shared_t] download of (%p, %p, %lu) failed %d\n", 
            device_ptr, host_ptr, bytes, result);
     return result;
+  }
+
+  int randomize() {
+    if (device_ptr == nullptr) {
+      printf("[shared_t] device_ptr is nullptr for randomize (host:%p, device:%p)\n",
+             host_ptr, device_ptr);
+      return 1;
+    }
+
+    curandGenerator_t generator;
+    auto r_gen_create = curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
+    if (r_gen_create != CURAND_STATUS_SUCCESS) {
+      printf("[shared_t] create generator failed %d\n", r_gen_create);
+      return r_gen_create;
+    }
+
+    auto r_gen = curandGenerate(generator, (unsigned int*) device_ptr, count); 
+    if (r_gen != CURAND_STATUS_SUCCESS) {
+      printf("[shared_t] generate failed %d\n", r_gen);
+    }
+
+    auto r_destroy = curandDestroyGenerator(generator);
+    if (r_destroy != CURAND_STATUS_SUCCESS) {
+      printf("[shared_t] destroy generator failed %d\n", r_destroy);
+      return r_destroy;
+    }
+
+    return 0;
   }
 
   device_t device() const {
@@ -238,10 +267,16 @@ int main() {
   measure_t measure{true};
   measure_t cpu_measure{false};
 
-  /* fZero to fill zeros */
+  /* generate random numbers in device memory */
+  if (input.randomize() != 0)
+    return 4;
+
+  /* copy it to host memory */
+  if (input.download() != 0)
+    return 3;
+
   /* fIndex to fill item with it's index */
   /* fRamdom to fill item with random value */
-  fillMatrix(input.host(), width, height, fIndex);
   fillMatrix(output.host(), width, height, fZero);
   fillMatrix(check.host(), width, height, fZero);
 
